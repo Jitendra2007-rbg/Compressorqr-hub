@@ -7,6 +7,10 @@ interface QRGeneratorProps {
   showToast: (msg: string, type?: 'success' | 'info') => void;
 }
 
+const API_BASE = import.meta.env.PROD
+  ? 'https://compressorqr-hub.onrender.com'
+  : 'http://localhost:10000';
+
 const QRGenerator: React.FC<QRGeneratorProps> = ({ showToast }) => {
   const [content, setContent] = useState('https://compressorqr-hub.onrender.com');
   const [activeTab, setActiveTab] = useState<'text' | 'file'>('text');
@@ -18,16 +22,36 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({ showToast }) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
-      const mockHostedUrl = `https://compressqr.hub/share/${Date.now()}/${file.name.replace(/\s/g, '_')}`;
-      setContent(mockHostedUrl);
+      setContent('Uploading...'); // Temporary state
 
-      const status = await addToHistory({
-        action: 'Generated File QR',
-        file: file.name,
-        type: 'qr',
-        size: 'N/A'
-      });
-      if (status === 'local') showToast("Login to save your history permanently.", "info");
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch(`${API_BASE}/api/upload`, {
+          method: 'POST',
+          body: formData
+        });
+
+        if (!res.ok) throw new Error('Upload failed');
+
+        const data = await res.json();
+        setContent(data.downloadUrl);
+
+        const status = await addToHistory({
+          action: 'Generated File QR',
+          file: file.name,
+          type: 'qr',
+          size: (file.size / 1024 / 1024).toFixed(2) + ' MB'
+        });
+        if (status === 'local') showToast("Login to save your history permanently.", "info");
+
+      } catch (err) {
+        console.error(err);
+        showToast("Failed to upload file. Please try again.", "info");
+        setContent('');
+        setSelectedFile(null);
+      }
     }
   };
 

@@ -5,11 +5,32 @@ import { promisify } from 'util';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import multer from 'multer';
 
 const execAsync = promisify(exec);
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Ensure uploads directory exists
+const uploadDir = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadDir)) {
+    fs.mkdirSync(uploadDir);
+}
+
+// Configure multer storage
+const storage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        // Create unique ID: timestamp-random-originalExt
+        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
+        const ext = path.extname(file.originalname);
+        cb(null, uniqueSuffix + ext);
+    }
+});
+const upload = multer({ storage: storage });
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
@@ -154,6 +175,28 @@ app.get('/api/stream', (req, res) => {
     } catch (err) {
         console.error('[Stream Setup Error]:', err);
         if (!res.headersSent) res.status(500).json({ error: err.message });
+    }
+});
+
+// ---- FILE UPLOAD & SHARE ----
+app.post('/api/upload', upload.single('file'), (req, res) => {
+    if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
+
+    // Construct download URL
+    const downloadUrl = `${req.protocol}://${req.get('host')}/share/${req.file.filename}`;
+
+    res.json({
+        id: req.file.filename,
+        downloadUrl: downloadUrl
+    });
+});
+
+app.get('/share/:id', (req, res) => {
+    const filePath = path.join(uploadDir, req.params.id);
+    if (fs.existsSync(filePath)) {
+        res.download(filePath); // Forces download
+    } else {
+        res.status(404).send('File not found or expired.');
     }
 });
 
