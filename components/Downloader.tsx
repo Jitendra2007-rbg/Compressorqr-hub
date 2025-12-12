@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Video, Music, Play, Loader2, CheckCircle2 } from 'lucide-react';
+import { Search, Video, Music, Play, Loader2, CheckCircle2, AlertCircle } from 'lucide-react';
 
 interface DownloaderProps {
     showToast: (msg: string, type?: 'success' | 'info') => void;
@@ -15,6 +15,7 @@ const API_BASE = import.meta.env.PROD
 const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
     const [url, setUrl] = useState('');
     const [isSearching, setIsSearching] = useState(false);
+    const [error, setError] = useState('');
     const [progress, setProgress] = useState(0);
     const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading' | 'completed'>('idle');
     const [videoData, setVideoData] = useState<{
@@ -29,6 +30,7 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
         if (!url) return;
         setIsSearching(true);
         setVideoData(null);
+        setError('');
         setProgress(0);
         setDownloadStatus('idle');
 
@@ -56,6 +58,8 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
             });
 
         } catch (e: any) {
+            console.error(e);
+            setError(e.message);
             showToast(e.message || "Could not find video info", "info");
         } finally {
             setIsSearching(false);
@@ -147,6 +151,13 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
                     {isSearching ? <Loader2 size={24} className="animate-spin" /> : <Search size={24} />}
                 </button>
             </div>
+
+            {error && (
+                <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-xl flex items-center gap-3 animate-in fade-in slide-in-from-top-2">
+                    <AlertCircle size={20} />
+                    <p className="text-sm font-medium">{error}</p>
+                </div>
+            )}
 
             {videoData && (
                 <div className="bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 animate-in fade-in slide-in-from-bottom-4 duration-500">

@@ -61,8 +61,23 @@ app.post('/api/probe', async (req, res) => {
             formats
         });
     } catch (err) {
-        console.error('[Probe Error]:', err);
-        res.status(500).json({ error: err.message || 'Failed to probe video' });
+        const msg = String(err.stderr || err.message || '');
+        console.error('[Probe Error]:', msg);
+
+        // ✅ detect login / bot / protected content cases
+        if (
+            msg.includes('login required') ||
+            msg.includes('Sign in to confirm') ||
+            msg.includes('sign in required') ||
+            msg.includes('requested content is not available') ||
+            msg.includes('Private video')
+        ) {
+            return res.status(403).json({
+                error: 'This video/reel is protected (login/age/region/private). Only public links are supported.'
+            });
+        }
+
+        res.status(500).json({ error: 'Failed to find video info. Please check the link.' });
     }
 });
 
