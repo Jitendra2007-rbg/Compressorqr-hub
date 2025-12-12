@@ -1,0 +1,5 @@
+{
+  "name": "CompressQR Hub",
+  "description": "A comprehensive media tool for compressing images/videos, generating QR codes, and downloading media from links.",
+  "requestFramePermissions": []
+}
