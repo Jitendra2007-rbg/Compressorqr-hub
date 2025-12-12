@@ -11,8 +11,11 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewChange }) => {
   const [recentItems, setRecentItems] = useState<ActivityItem[]>([]);
 
   useEffect(() => {
-    const history = getHistory();
-    setRecentItems(history.slice(0, 5)); // Show top 5
+    const fetchHistory = async () => {
+      const history = await getHistory();
+      setRecentItems(history.slice(0, 5)); // Show top 5
+    };
+    fetchHistory();
   }, []);
 
   const getIcon = (type: string) => {

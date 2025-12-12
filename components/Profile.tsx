@@ -1,14 +1,47 @@
 import React, { useState, useEffect } from 'react';
-import { User, Settings, LogOut, Clock, FileImage, QrCode, Download } from 'lucide-react';
+import { User, LogOut, Clock, FileImage, QrCode, Download, Cloud } from 'lucide-react';
 import { getHistory, formatDate, clearHistory } from '../utils/storage';
-import { ActivityItem } from '../types';
+import { ActivityItem, AppView } from '../types';
+import { supabase } from '../utils/supabaseClient';
 
-const Profile: React.FC = () => {
+interface ProfileProps {
+  onViewChange: (view: AppView) => void;
+}
+
+const Profile: React.FC<ProfileProps> = ({ onViewChange }) => {
   const [history, setHistory] = useState<ActivityItem[]>([]);
+  const [session, setSession] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    setHistory(getHistory());
+    // Check Auth
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    // Load History
+    loadHistory();
   }, []);
+
+  const loadHistory = async () => {
+    setLoading(true);
+    const data = await getHistory();
+    setHistory(data);
+    setLoading(false);
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    loadHistory(); // Reloads local history
+  };
+
+  const handleClearHistory = async () => {
+      // If logged in, we might want to delete from server, currently util only does local.
+      // We will clear local for now as per util.
+      clearHistory();
+      setHistory([]);
+  };
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -17,11 +50,6 @@ const Profile: React.FC = () => {
       case 'download': return <Download size={16} className="text-purple-500" />;
       default: return <Clock size={16} />;
     }
-  };
-
-  const handleClearHistory = () => {
-      clearHistory();
-      setHistory([]);
   };
 
   return (
@@ -34,20 +62,41 @@ const Profile: React.FC = () => {
          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4 text-gray-400">
             <User size={32} />
          </div>
-         <h3 className="text-xl font-bold text-gray-900 mb-2">Guest User</h3>
-         <p className="text-gray-500 mb-6 max-w-md mx-auto">
-           Your history is saved locally in this browser. Upgrade to Pro to sync across devices.
-         </p>
-         <button className="px-6 py-2.5 bg-emerald-500 text-white font-medium rounded-lg hover:bg-emerald-600 transition-colors shadow-sm">
-            Sign In / Register
-         </button>
+         {session ? (
+             <>
+               <h3 className="text-xl font-bold text-gray-900 mb-1">Welcome Back</h3>
+               <p className="text-emerald-600 font-medium mb-6">{session.user.email}</p>
+               <button 
+                  onClick={handleLogout}
+                  className="px-6 py-2.5 bg-gray-100 text-gray-700 font-medium rounded-lg hover:bg-gray-200 transition-colors shadow-sm flex items-center justify-center gap-2 mx-auto"
+               >
+                  <LogOut size={16} /> Sign Out
+               </button>
+             </>
+         ) : (
+             <>
+               <h3 className="text-xl font-bold text-gray-900 mb-2">Guest User</h3>
+               <p className="text-gray-500 mb-6 max-w-md mx-auto">
+                 Your history is currently saved in this browser. Login to sync with the cloud.
+               </p>
+               <button 
+                  onClick={() => onViewChange(AppView.AUTH)}
+                  className="px-6 py-2.5 bg-emerald-500 text-white font-medium rounded-lg hover:bg-emerald-600 transition-colors shadow-sm"
+               >
+                  Sign In / Register
+               </button>
+             </>
+         )}
       </div>
 
       <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
         <div className="flex items-center justify-between mb-4">
-             <h3 className="text-lg font-semibold text-gray-900">Activity History</h3>
-             {history.length > 0 && (
-                 <button onClick={handleClearHistory} className="text-xs text-red-500 hover:text-red-700 font-medium">Clear History</button>
+             <div className="flex items-center gap-2">
+                 <h3 className="text-lg font-semibold text-gray-900">Activity History</h3>
+                 {session && <span className="bg-emerald-100 text-emerald-600 text-[10px] px-2 py-0.5 rounded-full flex items-center gap-1"><Cloud size={10} /> Synced</span>}
+             </div>
+             {history.length > 0 && !session && (
+                 <button onClick={handleClearHistory} className="text-xs text-red-500 hover:text-red-700 font-medium">Clear Local</button>
              )}
         </div>
         
@@ -62,7 +111,9 @@ const Profile: React.FC = () => {
                 </tr>
              </thead>
              <tbody>
-                {history.length > 0 ? (
+                {loading ? (
+                    <tr><td colSpan={4} className="p-8 text-center text-gray-400">Loading history...</td></tr>
+                ) : history.length > 0 ? (
                     history.map((item) => (
                         <tr key={item.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50 transition-colors">
                             <td className="px-4 py-4 flex items-center gap-2 font-medium text-gray-700">

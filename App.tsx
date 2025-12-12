@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Menu, LayoutDashboard, FileImage, QrCode, Download, User } from 'lucide-react';
 import { AppView } from './types';
 import Dashboard from './components/Dashboard';
@@ -7,26 +7,46 @@ import QRGenerator from './components/QRGenerator';
 import Downloader from './components/Downloader';
 import Profile from './components/Profile';
 import Upgrade from './components/Upgrade';
+import Auth from './components/Auth';
 import Sidebar from './components/Sidebar';
+import { supabase } from './utils/supabaseClient';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [toast, setToast] = useState<{msg: string, type: 'success' | 'info' | 'error'} | null>(null);
+
+  // Auto-clear toast
+  useEffect(() => {
+    if (toast) {
+      const timer = setTimeout(() => setToast(null), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [toast]);
+
+  const showToast = (msg: string, type: 'success' | 'info' | 'error' = 'info') => {
+    setToast({ msg, type });
+  };
 
   const renderView = () => {
     switch (currentView) {
       case AppView.DASHBOARD:
         return <Dashboard onViewChange={setCurrentView} />;
       case AppView.COMPRESSOR:
-        return <Compressor />;
+        return <Compressor showToast={showToast} />;
       case AppView.QR_GENERATOR:
-        return <QRGenerator />;
+        return <QRGenerator showToast={showToast} />;
       case AppView.DOWNLOADER:
-        return <Downloader />;
+        return <Downloader showToast={showToast} />;
       case AppView.PROFILE:
-        return <Profile />;
+        return <Profile onViewChange={setCurrentView} />;
       case AppView.UPGRADE:
         return <Upgrade />;
+      case AppView.AUTH:
+        return <Auth onSuccess={() => {
+            setCurrentView(AppView.DASHBOARD);
+            showToast("Successfully logged in!", "success");
+        }} onViewChange={setCurrentView} />;
       default:
         return <Dashboard onViewChange={setCurrentView} />;
     }
@@ -40,12 +60,24 @@ const App: React.FC = () => {
       case AppView.DOWNLOADER: return 'Universal Downloader';
       case AppView.PROFILE: return 'Profile';
       case AppView.UPGRADE: return 'Pro Plans';
+      case AppView.AUTH: return 'Account';
       default: return 'CompressQR';
     }
   };
 
   return (
     <div className="flex h-screen overflow-hidden text-gray-800">
+      {/* Toast Notification */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
+          <div className={`px-6 py-3 rounded-full shadow-xl text-white text-sm font-medium ${
+            toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-600'
+          }`}>
+             {toast.msg}
+          </div>
+        </div>
+      )}
+
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
         <div 
@@ -85,10 +117,6 @@ const App: React.FC = () => {
             <h1 className="hidden lg:block text-xl font-semibold text-gray-800 ml-2">
               {getHeaderTitle()}
             </h1>
-          </div>
-          
-          <div className="flex items-center gap-2">
-            {/* Right side icons removed for cleaner UI */}
           </div>
         </header>
 

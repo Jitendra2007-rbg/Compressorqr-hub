@@ -4,7 +4,8 @@ export enum AppView {
   QR_GENERATOR = 'QR_GENERATOR',
   DOWNLOADER = 'DOWNLOADER',
   PROFILE = 'PROFILE',
-  UPGRADE = 'UPGRADE'
+  UPGRADE = 'UPGRADE',
+  AUTH = 'AUTH'
 }
 
 export interface ActivityItem {

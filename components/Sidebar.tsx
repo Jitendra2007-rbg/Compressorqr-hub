@@ -1,6 +1,7 @@
-import React from 'react';
-import { LayoutDashboard, FileImage, QrCode, Download, User, X } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { LayoutDashboard, FileImage, QrCode, Download, User, X, LogIn, Sparkles } from 'lucide-react';
 import { AppView } from '../types';
+import { supabase } from '../utils/supabaseClient';
 
 interface SidebarProps {
   currentView: AppView;
@@ -10,6 +11,22 @@ interface SidebarProps {
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isOpen, setIsOpen }) => {
+  const [session, setSession] = useState<any>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   const menuItems = [
     { id: AppView.DASHBOARD, label: 'Dashboard', icon: LayoutDashboard },
     { id: AppView.COMPRESSOR, label: 'Compress Media', icon: FileImage },
@@ -59,20 +76,46 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, setCurrentView, isOpen, 
               </button>
             );
           })}
+          
+          {/* Mobile Upgrade Link in Nav */}
+          <button 
+             onClick={() => setCurrentView(AppView.UPGRADE)}
+             className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group lg:hidden ${currentView === AppView.UPGRADE ? 'bg-emerald-50 text-emerald-600 font-medium' : 'text-gray-600'}`}
+          >
+             <Sparkles size={20} className="text-amber-400" />
+             Upgrade Plan
+          </button>
         </nav>
 
         {/* Footer */}
         <div className="p-4 border-t border-gray-100">
-          <div className="bg-emerald-500 rounded-xl p-4 text-white">
-             <p className="text-sm font-semibold mb-1">Pro Plan</p>
-             <p className="text-xs text-emerald-100 mb-3">Unlock 4K downloads & unlimited compression.</p>
-             <button 
-               onClick={() => setCurrentView(AppView.UPGRADE)}
-               className="w-full py-2 bg-white text-emerald-600 text-xs font-bold rounded-lg hover:bg-emerald-50 transition-colors"
-             >
-               Upgrade Now
-             </button>
-          </div>
+          {session ? (
+            <div className="bg-emerald-50 rounded-xl p-4">
+               <div className="flex items-center justify-between mb-2">
+                 <p className="text-sm font-semibold text-emerald-800">Free Tier</p>
+                 <span className="text-[10px] bg-emerald-200 text-emerald-800 px-2 py-0.5 rounded-full font-bold">ACTIVE</span>
+               </div>
+               <p className="text-xs text-emerald-600 mb-3 truncate" title={session.user.email}>{session.user.email}</p>
+               
+               <button 
+                 onClick={() => setCurrentView(AppView.UPGRADE)}
+                 className="w-full py-2 bg-white text-emerald-600 text-xs font-bold rounded-lg hover:bg-emerald-100 transition-colors flex items-center justify-center gap-2 border border-emerald-100 shadow-sm"
+               >
+                 <Sparkles size={14} className="text-amber-500" /> Upgrade to Pro
+               </button>
+            </div>
+          ) : (
+            <div className="bg-gray-900 rounded-xl p-4 text-white">
+               <p className="text-sm font-semibold mb-1">Guest Mode</p>
+               <p className="text-xs text-gray-400 mb-3">Login to save your history permanently.</p>
+               <button 
+                 onClick={() => setCurrentView(AppView.AUTH)}
+                 className="w-full py-2 bg-white text-gray-900 text-xs font-bold rounded-lg hover:bg-gray-100 transition-colors flex items-center justify-center gap-2"
+               >
+                 <LogIn size={14} /> Login Now
+               </button>
+            </div>
+          )}
         </div>
       </div>
     </div>

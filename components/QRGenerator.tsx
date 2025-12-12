@@ -3,26 +3,31 @@ import { QRCodeCanvas } from 'qrcode.react';
 import { Download, Link, FileText, Image as ImageIcon, X } from 'lucide-react';
 import { addToHistory } from '../utils/storage';
 
-const QRGenerator: React.FC = () => {
+interface QRGeneratorProps {
+  showToast: (msg: string, type?: 'success' | 'info') => void;
+}
+
+const QRGenerator: React.FC<QRGeneratorProps> = ({ showToast }) => {
   const [content, setContent] = useState('');
   const [activeTab, setActiveTab] = useState<'text' | 'file'>('text');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const qrRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
       const mockHostedUrl = `https://compressqr.hub/share/${Date.now()}/${file.name.replace(/\s/g, '_')}`;
       setContent(mockHostedUrl);
       
-      addToHistory({
+      const status = await addToHistory({
           action: 'Generated File QR',
           file: file.name,
           type: 'qr',
           size: 'N/A'
       });
+      if (status === 'local') showToast("Login to save your history permanently.", "info");
     }
   };
 
@@ -30,7 +35,7 @@ const QRGenerator: React.FC = () => {
     setContent(e.target.value);
   };
 
-  const downloadQR = () => {
+  const downloadQR = async () => {
     const canvas = qrRef.current?.querySelector('canvas');
     if (canvas) {
       const url = canvas.toDataURL('image/png');
@@ -42,11 +47,12 @@ const QRGenerator: React.FC = () => {
       document.body.removeChild(link);
       
       if (activeTab === 'text' && content) {
-          addToHistory({
+          const status = await addToHistory({
               action: 'Generated Text QR',
               file: content.substring(0, 30) + '...',
               type: 'qr',
           });
+          if (status === 'local') showToast("Login to save your history permanently.", "info");
       }
     }
   };

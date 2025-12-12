@@ -4,7 +4,11 @@ import imageCompression from 'browser-image-compression';
 import { addToHistory } from '../utils/storage';
 import { formatBytes } from '../utils/video';
 
-const Compressor: React.FC = () => {
+interface CompressorProps {
+  showToast: (msg: string, type?: 'success' | 'info') => void;
+}
+
+const Compressor: React.FC<CompressorProps> = ({ showToast }) => {
   const [file, setFile] = useState<File | null>(null);
   const [compressedFile, setCompressedFile] = useState<Blob | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
@@ -52,7 +56,6 @@ const Compressor: React.FC = () => {
     
     // Iterative Reduction Loop
     let iterations = 0;
-    // We allow a small buffer (5%) over the limit because compression isn't exact
     const limitBytes = targetSizeMB * 1024 * 1024;
     
     while (currentAttempt.size > limitBytes && iterations < 5) {
@@ -99,12 +102,18 @@ const Compressor: React.FC = () => {
          setError(`Could not strictly reach ${targetSize}${unit}. Best result: ${formatBytes(compressedBlob.size)}`);
       } else {
          // Success - Add to history
-         addToHistory({
+         const status = await addToHistory({
              action: 'Compressed Image',
              file: file.name,
              type: 'compress',
              size: formatBytes(compressedBlob.size)
          });
+         
+         if (status === 'local') {
+           showToast("Login to save your history permanently.", "info");
+         } else {
+           showToast("Compressed successfully & saved to cloud!", "success");
+         }
       }
       
       setCompressedFile(compressedBlob);
@@ -136,10 +145,10 @@ const Compressor: React.FC = () => {
 
       <div 
         className={`
-          bg-white rounded-2xl border-2 border-dashed transition-all cursor-pointer relative
-          ${file ? 'border-emerald-500 bg-emerald-50/10' : 'border-gray-200 hover:border-emerald-400 hover:bg-gray-50'}
+          bg-white rounded-2xl border-2 border-dashed transition-all relative overflow-hidden
+          ${file ? 'border-emerald-500 bg-emerald-50/10' : 'border-gray-200 hover:border-emerald-400 hover:bg-gray-50 cursor-pointer'}
         `}
-        style={{ minHeight: '300px' }}
+        style={{ minHeight: file ? '140px' : '70px' }} 
         onDrop={handleDrop}
         onDragOver={handleDragOver}
         onClick={() => !file && fileInputRef.current?.click()}
@@ -153,117 +162,127 @@ const Compressor: React.FC = () => {
         />
 
         {file ? (
-           <div className="absolute inset-0 flex flex-col items-center justify-center p-6">
+           <div className="p-3 h-full flex flex-col md:flex-row items-center gap-4">
+             {/* Close Button */}
              <button 
                 onClick={(e) => { e.stopPropagation(); setFile(null); setCompressedFile(null); setError(null); }}
-                className="absolute top-4 right-4 p-2 bg-gray-100 rounded-full hover:bg-gray-200 transition-colors"
+                className="absolute top-2 right-2 p-1 bg-white/80 backdrop-blur shadow-sm rounded-full hover:bg-red-50 hover:text-red-500 transition-colors z-20"
              >
-               <X size={20} className="text-gray-600" />
+               <X size={14} />
              </button>
              
-             {file.type.startsWith('image/') ? (
-                <img 
-                  src={URL.createObjectURL(file)} 
-                  alt="Preview" 
-                  className="h-32 object-contain rounded-lg shadow-sm mb-4" 
-                />
-             ) : (
-                <div className="h-32 w-32 bg-gray-100 rounded-lg flex items-center justify-center mb-4 text-emerald-600">
-                   <FileVideo size={48} />
-                </div>
-             )}
-             
-             <h3 className="font-semibold text-gray-900 text-lg truncate max-w-xs">{file.name}</h3>
-             <p className="text-sm text-gray-500 mt-1">Original: {formatBytes(file.size)}</p>
-
-             {!compressedFile && !isCompressing && (
-                <div className="mt-6 w-full max-w-xs space-y-4" onClick={e => e.stopPropagation()}>
-                    <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1.5 text-left">Target File Size</label>
-                        <div className="flex gap-2">
-                            <input 
-                                type="number" 
-                                value={targetSize}
-                                onChange={(e) => setTargetSize(e.target.value)}
-                                placeholder="e.g. 500"
-                                className="flex-1 px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none transition-all"
-                                min="1"
-                            />
-                            <select
-                                value={unit}
-                                onChange={(e) => setUnit(e.target.value as 'KB' | 'MB')}
-                                className="px-3 py-3 bg-gray-50 border border-gray-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-500 outline-none font-medium text-gray-700"
-                            >
-                                <option value="KB">KB</option>
-                                <option value="MB">MB</option>
-                            </select>
-                        </div>
-                        <p className="text-[10px] text-gray-400 mt-2 text-left">We'll strictly attempt to stay under this limit.</p>
+             {/* Preview Image/Icon */}
+             <div className="shrink-0">
+                 {file.type.startsWith('image/') ? (
+                    <img 
+                      src={URL.createObjectURL(file)} 
+                      alt="Preview" 
+                      className="h-16 w-16 object-cover rounded-lg shadow-sm border border-gray-100 bg-white" 
+                    />
+                 ) : (
+                    <div className="h-16 w-16 bg-white rounded-lg flex items-center justify-center text-emerald-600 shadow-sm border border-emerald-100">
+                       <FileVideo size={24} />
                     </div>
-                    <button 
-                        onClick={compressImage}
-                        className="w-full py-3 bg-emerald-500 text-white font-semibold rounded-xl shadow-lg shadow-emerald-200 hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-2"
-                    >
-                        Compress Now
-                    </button>
-                </div>
-             )}
+                 )}
+             </div>
 
-             {isCompressing && (
-                 <div className="mt-6 flex flex-col items-center animate-pulse text-emerald-600">
-                     <RefreshCw className="animate-spin mb-2" />
-                     <span className="text-sm font-medium">Crunching pixels...</span>
+             {/* File Info & Controls */}
+             <div className="flex-1 w-full flex flex-col md:flex-row md:items-center justify-between gap-3">
+                 <div className="min-w-0">
+                     <h3 className="font-semibold text-gray-900 text-sm truncate">{file.name}</h3>
+                     <p className="text-[10px] text-gray-500">Original: <span className="font-medium text-gray-700">{formatBytes(file.size)}</span></p>
+                     {error && (
+                        <p className="text-[10px] text-red-500 mt-0.5 flex items-center gap-1">
+                            <AlertCircle size={10} /> {error}
+                        </p>
+                     )}
                  </div>
-             )}
-             
-             {error && (
-                 <div className="mt-4 bg-red-50 text-red-600 px-4 py-3 rounded-lg flex items-start gap-2 text-sm text-left">
-                    <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                    <p>{error}</p>
+
+                 <div className="w-full md:max-w-xs bg-white/50 p-1.5 rounded-lg border border-emerald-100/50" onClick={e => e.stopPropagation()}>
+                    {!compressedFile && !isCompressing && (
+                        <div className="space-y-1.5">
+                            <div>
+                                <label className="block text-[9px] font-bold text-gray-400 uppercase tracking-wider mb-0.5">Target Max Size</label>
+                                <div className="flex gap-1.5">
+                                    <input 
+                                        type="number" 
+                                        value={targetSize}
+                                        onChange={(e) => setTargetSize(e.target.value)}
+                                        placeholder="500"
+                                        className="flex-1 px-2 py-1 bg-white border border-gray-200 rounded text-xs focus:ring-1 focus:ring-emerald-500 outline-none transition-all"
+                                        min="1"
+                                    />
+                                    <select
+                                        value={unit}
+                                        onChange={(e) => setUnit(e.target.value as 'KB' | 'MB')}
+                                        className="px-1 py-1 bg-white border border-gray-200 rounded text-xs focus:ring-1 focus:ring-emerald-500 outline-none font-medium text-gray-700"
+                                    >
+                                        <option value="KB">KB</option>
+                                        <option value="MB">MB</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <button 
+                                onClick={compressImage}
+                                className="w-full py-1 bg-emerald-500 text-white text-xs font-semibold rounded shadow-sm hover:bg-emerald-600 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+                            >
+                                <RefreshCw size={12} /> Compress
+                            </button>
+                        </div>
+                     )}
+
+                     {isCompressing && (
+                         <div className="flex flex-col items-center justify-center py-1 text-emerald-600">
+                             <RefreshCw className="animate-spin mb-0.5" size={16} />
+                             <span className="text-[10px] font-medium">Processing...</span>
+                         </div>
+                     )}
                  </div>
-             )}
+             </div>
            </div>
         ) : (
-          <div className="h-full flex flex-col items-center justify-center p-8 text-center">
-            <div className="w-16 h-16 bg-emerald-50 rounded-full flex items-center justify-center text-emerald-500 mb-4 shadow-sm">
-              <Upload size={32} />
+          <div className="h-full flex flex-col items-center justify-center p-2 text-center min-h-[70px]">
+            <div className="flex items-center gap-2 text-gray-500">
+                <Upload size={16} className="text-emerald-500" />
+                <h3 className="text-sm font-medium text-gray-900">Click or Drop Image</h3>
             </div>
-            <h3 className="text-xl font-medium text-gray-900">Drop Image</h3>
-            <p className="text-sm text-gray-400 mt-2 max-w-xs mx-auto">
-              Supports JPG, PNG, WEBP
+            <p className="text-[10px] text-gray-400 mt-0.5">
+              Supports JPG, PNG, WEBP (Strict Mode)
             </p>
           </div>
         )}
       </div>
 
-      <div className={`bg-white rounded-2xl border border-gray-100 p-8 flex flex-col items-center justify-center text-center transition-opacity duration-500 ${compressedFile ? 'opacity-100' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: '200px' }}>
+      <div className={`bg-white rounded-2xl border border-gray-100 p-6 flex flex-col items-center justify-center text-center transition-opacity duration-500 ${compressedFile ? 'opacity-100' : 'opacity-50 pointer-events-none'}`} style={{ minHeight: '120px' }}>
          {compressedFile ? (
-            <div className="w-full max-w-md">
-                <div className="w-16 h-16 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 mb-4 mx-auto">
-                    <Download size={32} />
+            <div className="w-full max-w-lg flex flex-col sm:flex-row items-center justify-between gap-6">
+                <div className="text-left flex items-center gap-4">
+                    <div className="w-12 h-12 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 shrink-0">
+                        <Download size={24} />
+                    </div>
+                    <div>
+                        <h3 className="text-lg font-bold text-gray-900 leading-tight">Compression Ready!</h3>
+                        <p className="text-gray-500 text-sm">
+                            <span className="font-semibold text-emerald-600">{formatBytes(compressedFile.size)}</span>
+                            <span className="text-xs ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full inline-block">
+                                -{file ? Math.round((1 - compressedFile.size / file.size) * 100) : 0}%
+                            </span>
+                        </p>
+                    </div>
                 </div>
-                <h3 className="text-xl font-bold text-gray-900 mb-1">Compression Success!</h3>
-                <p className="text-gray-500 mb-6">
-                    New size: <span className="font-semibold text-emerald-600">{formatBytes(compressedFile.size)}</span>
-                    <span className="text-xs ml-2 bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
-                        -{file ? Math.round((1 - compressedFile.size / file.size) * 100) : 0}% saved
-                    </span>
-                </p>
                 <button 
                     onClick={downloadFile}
-                    className="w-full py-3 bg-emerald-500 text-white font-semibold rounded-xl shadow-lg hover:bg-emerald-600 transition-colors flex items-center justify-center gap-2"
+                    className="w-full sm:w-auto px-8 py-3 bg-gray-900 text-white font-semibold rounded-xl shadow-lg hover:bg-gray-800 transition-colors flex items-center justify-center gap-2"
                 >
-                    <Download size={18} />
-                    Download Result
+                    Download File
                 </button>
             </div>
          ) : (
-            <>
-                <div className="w-16 h-16 bg-gray-50 rounded-full flex items-center justify-center text-gray-300 mb-4">
-                    <Download size={32} />
-                </div>
-                <p className="text-gray-300">Results will appear here</p>
-            </>
+            <div className="flex items-center gap-3 text-gray-300">
+                <div className="w-2 h-2 rounded-full bg-gray-300"></div>
+                <p>Compressed files will appear here</p>
+                <div className="w-2 h-2 rounded-full bg-gray-300"></div>
+            </div>
          )}
       </div>
     </div>

@@ -22,6 +22,24 @@
         background: #cbd5e1;
         border-radius: 3px;
       }
+      .toast-enter {
+        transform: translateY(100%);
+        opacity: 0;
+      }
+      .toast-enter-active {
+        transform: translateY(0);
+        opacity: 1;
+        transition: all 300ms;
+      }
+      .toast-exit {
+        transform: translateY(0);
+        opacity: 1;
+      }
+      .toast-exit-active {
+        transform: translateY(100%);
+        opacity: 0;
+        transition: all 300ms;
+      }
     </style>
   <script type="importmap">
 {
@@ -31,7 +49,8 @@
     "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
     "lucide-react": "https://esm.sh/lucide-react@^0.560.0",
     "qrcode.react": "https://esm.sh/qrcode.react@^4.2.0",
-    "browser-image-compression": "https://esm.sh/browser-image-compression@^2.0.2"
+    "browser-image-compression": "https://esm.sh/browser-image-compression@^2.0.2",
+    "@supabase/supabase-js": "https://esm.sh/@supabase/supabase-js@2.39.8"
   }
 }
 </script>
