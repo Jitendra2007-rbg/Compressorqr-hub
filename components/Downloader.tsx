@@ -47,8 +47,8 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
     const handleDownload = async (format: any) => {
         if (!videoData) return;
 
-        // Create direct download link
-        const downloadUrl = `/api/stream?url=${encodeURIComponent(videoData.original_url)}&format_id=${format.format_id}&title=${encodeURIComponent(videoData.title)}&ext=${format.ext}`;
+        // Use original_url so the backend can fetch a fresh stream using yt-dlp
+        const downloadUrl = `/api/stream?originalUrl=${encodeURIComponent(videoData.original_url)}&format_id=${format.format_id}&title=${encodeURIComponent(videoData.title)}&ext=${format.ext}`;
 
         // Trigger download
         const a = document.createElement('a');
@@ -116,9 +116,12 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
                                                 <Download size={16} />
                                             </div>
                                             <div>
-                                                <p className="font-semibold text-gray-900 text-sm">{f.resolution} <span className="text-xs font-normal text-gray-500">({f.ext})</span></p>
-                                                <p className="text-[10px] text-gray-500">{f.filesize} {f.note && `• ${f.note}`}</p>
-                                                {f.vcodec !== 'none' && f.acodec !== 'none' ? <span className="text-[10px] text-green-600">Video+Audio</span> : <span className="text-[10px] text-orange-500">{f.vcodec === 'none' ? 'Audio Only' : 'Video Only'}</span>}
+                                                <div className="flex items-center gap-2">
+                                                    <p className="font-semibold text-gray-900 text-sm">{f.resolution} <span className="text-xs font-normal text-gray-500">({f.ext})</span></p>
+                                                    {f.is_video_only && <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded font-medium">Video Only</span>}
+                                                    {f.is_audio_only && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded font-medium">Audio Only</span>}
+                                                </div>
+                                                <p className="text-[10px] text-gray-500">{f.size} {f.note && `• ${f.note}`}</p>
                                             </div>
                                         </div>
                                     </button>
