@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { Search, Video, Download, Play, AlertCircle, Loader2 } from 'lucide-react';
-import { VideoQuality } from '../types';
+import { Search, Video, Music, Play, Loader2, CheckCircle2 } from 'lucide-react';
 
 interface DownloaderProps {
     showToast: (msg: string, type?: 'success' | 'info') => void;
@@ -9,18 +8,22 @@ interface DownloaderProps {
 const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
     const [url, setUrl] = useState('');
     const [isSearching, setIsSearching] = useState(false);
-    const [isDownloading, setIsDownloading] = useState(false);
+    const [progress, setProgress] = useState(0);
+    const [downloadStatus, setDownloadStatus] = useState<'idle' | 'downloading' | 'completed'>('idle');
     const [videoData, setVideoData] = useState<{
         title: string;
         thumbnail: string | null;
-        formats: any[];
+        duration: string;
         original_url: string;
+        estimated_size_mb?: number; // Approximate size
     } | null>(null);
 
     const handleSearch = async () => {
         if (!url) return;
         setIsSearching(true);
         setVideoData(null);
+        setProgress(0);
+        setDownloadStatus('idle');
 
         try {
             const res = await fetch('/api/probe', {
@@ -35,7 +38,16 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
             }
 
             const data = await res.json();
-            setVideoData(data);
+
+            // Calculate rough estimate of size (max video + audio)
+            // This is just a heuristic for the progress bar
+            const maxVideo = data.formats?.find((f: any) => f.resolution?.includes('720p') || f.resolution?.includes('1080p'))?.size || '10MB';
+            const sizeNum = parseFloat(maxVideo.toString().replace('MB', '')) || 20;
+
+            setVideoData({
+                ...data,
+                estimated_size_mb: sizeNum
+            });
 
         } catch (e: any) {
             showToast(e.message || "Could not find video info", "info");
@@ -44,90 +56,181 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
         }
     };
 
-    const handleDownload = async (format: any) => {
+    const handleDownload = async (type: 'video' | 'audio') => {
         if (!videoData) return;
+        setDownloadStatus('downloading');
+        setProgress(0);
 
-        // Use original_url so the backend can fetch a fresh stream using yt-dlp
-        const downloadUrl = `/api/stream?originalUrl=${encodeURIComponent(videoData.original_url)}&format_id=${format.format_id}&title=${encodeURIComponent(videoData.title)}&ext=${format.ext}`;
+        try {
+            const queryParams = new URLSearchParams({
+                originalUrl: videoData.original_url,
+                title: videoData.title,
+                type // 'video' or 'audio'
+            });
 
-        // Trigger download
-        const a = document.createElement('a');
-        a.href = downloadUrl;
-        a.click();
+            const response = await fetch(`/api/stream?${queryParams}`);
+            if (!response.body) throw new Error('ReadableStream not supported');
+
+            const contentLength = response.headers.get('Content-Length');
+            const total = contentLength
+                ? parseInt(contentLength, 10)
+                : (videoData.estimated_size_mb || 25) * 1024 * 1024; // Fallback to estimate
+
+            let loaded = 0;
+            const reader = response.body.getReader();
+            const chunks = [];
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                if (value) {
+                    chunks.push(value);
+                    loaded += value.length;
+                    // Calculate percentage (cap at 99 until finished)
+                    const percent = Math.min(Math.round((loaded / total) * 100), 99);
+                    setProgress(percent);
+                }
+            }
+
+            // Assemble Blob
+            const blob = new Blob(chunks, { type: type === 'video' ? 'video/mp4' : 'audio/mpeg' });
+            const downloadUrl = window.URL.createObjectURL(blob);
+
+            const a = document.createElement('a');
+            a.href = downloadUrl;
+            a.download = `${videoData.title.replace(/[^a-zA-Z0-9]/g, '_')}.${type === 'video' ? 'mp4' : 'mp3'}`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(downloadUrl);
+
+            setProgress(100);
+            setDownloadStatus('completed');
+            showToast("Download completed successfully!", "success");
+
+        } catch (error: any) {
+            console.error(error);
+            showToast("Download failed. Please try again.", "info");
+            setDownloadStatus('idle');
+            setProgress(0);
+        }
     };
 
     return (
-        <div className="space-y-6">
-            <div>
-                <h2 className="text-3xl font-bold text-gray-900 mb-2">Universal Downloader</h2>
-                <p className="text-gray-500">Download videos via direct stream.</p>
+        <div className="space-y-6 max-w-3xl mx-auto">
+            <div className="text-center">
+                <h2 className="text-4xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-emerald-600 to-teal-500 mb-2">
+                    Media Downloader
+                </h2>
+                <p className="text-gray-500">Save your favorite videos and music instantly.</p>
             </div>
 
-            <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 space-y-4">
-                <div className="flex gap-2">
-                    <input
-                        type="text"
-                        value={url}
-                        onChange={(e) => setUrl(e.target.value)}
-                        placeholder="Paste video link here..."
-                        className="flex-1 px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent outline-none transition-all"
-                    />
-                    <button
-                        onClick={handleSearch}
-                        disabled={isSearching}
-                        className="bg-emerald-500 hover:bg-emerald-600 text-white px-5 rounded-xl transition-colors shadow-sm active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                        {isSearching ? <Loader2 size={22} className="animate-spin" /> : <Search size={22} />}
-                    </button>
-                </div>
+            {/* Search Bar */}
+            <div className="bg-white rounded-2xl shadow-xl border border-emerald-100 p-2 flex gap-2 relative z-10">
+                <input
+                    type="text"
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder="Paste YouTube or Instagram link..."
+                    className="flex-1 px-4 py-3 bg-transparent text-gray-700 placeholder-gray-400 outline-none text-lg"
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                />
+                <button
+                    onClick={handleSearch}
+                    disabled={isSearching}
+                    className="bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white px-6 rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center min-w-[60px]"
+                >
+                    {isSearching ? <Loader2 size={24} className="animate-spin" /> : <Search size={24} />}
+                </button>
             </div>
 
+            {/* Result Card */}
             {videoData && (
-                <div className="bg-white rounded-2xl border border-gray-100 overflow-hidden animate-fade-in shadow-lg">
-                    <div className="flex flex-col md:flex-row">
-                        <div className="md:w-5/12 bg-gray-900 flex items-center justify-center relative min-h-[180px] md:min-h-full">
-                            {videoData.thumbnail ? (
-                                <>
-                                    <img src={videoData.thumbnail} alt="Thumb" className="absolute inset-0 w-full h-full object-cover opacity-60" />
-                                    <div className="relative z-10 w-14 h-14 bg-white/20 backdrop-blur-md rounded-full flex items-center justify-center text-white shadow-lg">
-                                        <Play fill="currentColor" size={20} className="ml-1" />
+                <div className="bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="relative h-64 md:h-80 bg-gray-900 group">
+                        {videoData.thumbnail ? (
+                            <img
+                                src={videoData.thumbnail}
+                                alt="Thumbnail"
+                                className="w-full h-full object-cover opacity-90 group-hover:opacity-100 transition-opacity duration-300"
+                            />
+                        ) : (
+                            <div className="flex items-center justify-center h-full">
+                                <Video size={64} className="text-gray-700" />
+                            </div>
+                        )}
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+
+                        <div className="absolute bottom-0 left-0 right-0 p-6 text-white">
+                            <h3 className="text-2xl font-bold leading-tight line-clamp-2 drop-shadow-md mb-2">{videoData.title}</h3>
+                            <div className="flex items-center gap-4 text-sm font-medium text-gray-300">
+                                <span className="bg-black/40 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                                    {videoData.duration || '0:00'}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Actions */}
+                    <div className="p-8 bg-white">
+                        {downloadStatus === 'downloading' ? (
+                            <div className="space-y-4">
+                                <div className="flex justify-between text-sm font-medium text-gray-600">
+                                    <span>Downloading...</span>
+                                    <span>{progress}%</span>
+                                </div>
+                                <div className="h-3 w-full bg-gray-100 rounded-full overflow-hidden">
+                                    <div
+                                        className="h-full bg-gradient-to-r from-emerald-400 to-teal-500 transition-all duration-300 ease-out"
+                                        style={{ width: `${progress}%` }}
+                                    />
+                                </div>
+                                <p className="text-xs text-center text-gray-400">Please do not close this tab.</p>
+                            </div>
+                        ) : downloadStatus === 'completed' ? (
+                            <div className="text-center py-4">
+                                <div className="inline-flex items-center justify-center w-16 h-16 bg-emerald-100 text-emerald-600 rounded-full mb-4 animate-bounce">
+                                    <CheckCircle2 size={32} />
+                                </div>
+                                <h4 className="text-xl font-bold text-gray-800">Download Ready!</h4>
+                                <p className="text-gray-500 mb-6">Your file has been saved.</p>
+                                <button
+                                    onClick={() => setDownloadStatus('idle')}
+                                    className="text-emerald-600 font-semibold hover:underline"
+                                >
+                                    Download another format
+                                </button>
+                            </div>
+                        ) : (
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <button
+                                    onClick={() => handleDownload('video')}
+                                    className="flex items-center justify-center gap-3 p-4 rounded-xl bg-gray-900 text-white hover:bg-black transition-all shadow-lg hover:shadow-xl active:scale-95 group"
+                                >
+                                    <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-colors">
+                                        <Video size={24} />
                                     </div>
-                                </>
-                            ) : (
-                                <Video size={48} className="text-white/20" />
-                            )}
-                        </div>
+                                    <div className="text-left">
+                                        <div className="font-bold text-lg">Download Video</div>
+                                        <div className="text-xs text-gray-400">MP4 • 720p+ Audio</div>
+                                    </div>
+                                </button>
 
-                        <div className="md:w-7/12 p-6 flex flex-col">
-                            <div className="mb-6">
-                                <h3 className="text-lg font-bold text-gray-900 leading-tight mb-2 line-clamp-2">{videoData.title}</h3>
-                                <p className="text-xs text-gray-500">Select Quality:</p>
+                                <button
+                                    onClick={() => handleDownload('audio')}
+                                    className="flex items-center justify-center gap-3 p-4 rounded-xl bg-violet-600 text-white hover:bg-violet-700 transition-all shadow-lg hover:shadow-xl active:scale-95 group"
+                                >
+                                    <div className="p-2 bg-white/10 rounded-lg group-hover:bg-white/20 transition-colors">
+                                        <Music size={24} />
+                                    </div>
+                                    <div className="text-left">
+                                        <div className="font-bold text-lg">Download Audio</div>
+                                        <div className="text-xs text-violet-200">MP3 • High Quality</div>
+                                    </div>
+                                </button>
                             </div>
-
-                            <div className="flex flex-col gap-3 max-h-60 overflow-y-auto pr-2 custom-scrollbar">
-                                {videoData.formats.map((f, idx) => (
-                                    <button
-                                        key={idx}
-                                        onClick={() => handleDownload(f)}
-                                        className="w-full flex items-center justify-between p-3 rounded-xl border border-gray-100 hover:border-emerald-500 hover:bg-emerald-50 transition-all group text-left"
-                                    >
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 group-hover:bg-emerald-500 group-hover:text-white transition-colors">
-                                                <Download size={16} />
-                                            </div>
-                                            <div>
-                                                <div className="flex items-center gap-2">
-                                                    <p className="font-semibold text-gray-900 text-sm">{f.resolution} <span className="text-xs font-normal text-gray-500">({f.ext})</span></p>
-                                                    {f.is_video_only && <span className="px-1.5 py-0.5 bg-orange-100 text-orange-700 text-[10px] rounded font-medium">Video Only</span>}
-                                                    {f.is_audio_only && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 text-[10px] rounded font-medium">Audio Only</span>}
-                                                </div>
-                                                <p className="text-[10px] text-gray-500">{f.size} {f.note && `• ${f.note}`}</p>
-                                            </div>
-                                        </div>
-                                    </button>
-                                ))}
-                            </div>
-                        </div>
+                        )}
                     </div>
                 </div>
             )}

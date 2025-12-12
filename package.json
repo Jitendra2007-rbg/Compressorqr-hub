@@ -1,14 +1,14 @@
 {
-  "name": "compressqr-hub",
-  "private": true,
-  "version": "0.0.0",
+  "name": "compressorqr-hub-backend",
+  "version": "1.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
     "dev:server": "node server.js",
     "start": "node server.js",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "postinstall": "if [ \"$RENDER\" = \"true\" ]; then curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ./yt-dlp && chmod +x ./yt-dlp; fi"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.39.8",

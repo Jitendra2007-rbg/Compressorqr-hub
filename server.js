@@ -14,16 +14,21 @@ const __dirname = path.dirname(__filename);
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// Ensure yt-dlp binary exists (robust check)
-const ytDlpBinaryPath = path.join(__dirname, 'yt-dlp'); // or 'yt-dlp.exe' on windows usually found by exec/spawn if in path
-// For this robust implementation, we assume yt-dlp is in PATH or current dir.
-// We will try to use the local one if exists, otherwise global 'yt-dlp'.
+// Root route to check if backend is running (Render health check)
+app.get('/', (req, res) => {
+    res.send('Backend is running. Use /api/probe and /api/stream.');
+});
+
+// Determine yt-dlp path based on environment
+// On Render (Linux), we use the one downloaded by postinstall into the root
+// Locally (Windows), we look for .exe or expect it in PATH
 const getYtDlpCommand = () => {
+    if (process.env.RENDER) return './yt-dlp';
     if (fs.existsSync(path.join(__dirname, 'yt-dlp.exe'))) return path.join(__dirname, 'yt-dlp.exe');
-    if (fs.existsSync(path.join(__dirname, 'yt-dlp'))) return path.join(__dirname, 'yt-dlp');
     return 'yt-dlp';
 };
 
+// ---- PROBE: get title + formats ----
 app.post('/api/probe', async (req, res) => {
     const { url } = req.body;
     console.log(`[Probe Request] Processing URL: ${url}`);
@@ -32,15 +37,14 @@ app.post('/api/probe', async (req, res) => {
 
     try {
         const ytDlpCmd = getYtDlpCommand();
+        // --dump-json gives us metadata
         const command = `"${ytDlpCmd}" --dump-json --flat-playlist "${url}"`;
 
-        // Increase buffer for large JSON outputs
         const { stdout } = await execAsync(command, { maxBuffer: 1024 * 1024 * 50 });
-
         const videoInfo = JSON.parse(stdout.split('\n')[0]);
         console.log(`[Probe Success] Title: ${videoInfo.title}`);
 
-        // Prepare formats
+        // We filter formats just for information, but frontend relies mostly on Video/Audio buttons now
         const formats = (videoInfo.formats || [])
             .filter(f => f.vcodec !== 'none' || f.acodec !== 'none')
             .sort((a, b) => (b.filesize || 0) - (a.filesize || 0))
@@ -59,7 +63,7 @@ app.post('/api/probe', async (req, res) => {
             title: videoInfo.title,
             thumbnail: videoInfo.thumbnail,
             duration: videoInfo.duration,
-            original_url: url, // Crucial for calling /api/stream
+            original_url: url,
             formats
         });
     } catch (err) {
@@ -68,51 +72,63 @@ app.post('/api/probe', async (req, res) => {
     }
 });
 
+// ---- STREAM: Download Video or Audio ----
 app.get('/api/stream', (req, res) => {
-    const { originalUrl, title, ext, format_id } = req.query;
-    console.log(`[Stream Request] ${title} | ${originalUrl}`);
+    const { originalUrl, title, type } = req.query; // type: 'video' | 'audio'
+    console.log(`[Stream Request] ${title} | ${originalUrl} | Type: ${type}`);
 
     if (!originalUrl) return res.status(400).json({ error: 'Original URL required' });
 
     try {
-        // We use spawn to pipe output DIRECTLY to response (Stream).
-        // This avoids buffering 100MB+ in memory and avoids "Content-Length" invalid errors.
         const ytDlpCmd = getYtDlpCommand();
+        const safeTitle = (title || 'download').replace(/[^a-z0-9]/gi, '_');
 
-        // Args for streaming
-        // -o - : output to stdout
-        // -f : format
-        // --no-part : do not use .part files (not relevant for stdout but good practice)
-        const args = [
-            '-o', '-',
-            '--no-playlist',
-            '--no-part', // Write directly
-            originalUrl
-        ];
+        let args = [];
+        let contentType = '';
+        let filename = '';
 
-        if (format_id) {
-            args.unshift(format_id); // value for -f
-            args.unshift('-f');
+        if (type === 'audio') {
+            // Audio Only: Best audio, extract to MP3
+            args = [
+                '-f', 'bestaudio',
+                '--extract-audio',
+                '--audio-format', 'mp3',
+                '--audio-quality', '0',
+                '-o', '-',
+                '--no-playlist',
+                '--no-part', // Write directly to stdout
+                originalUrl
+            ];
+            contentType = 'audio/mpeg';
+            filename = `${safeTitle}.mp3`;
         } else {
-            args.unshift('best');
-            args.unshift('-f');
+            // Video + Audio (Default): Merge max 720p
+            args = [
+                '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+                '--merge-output-format', 'mp4',
+                '-o', '-',
+                '--no-playlist',
+                '--no-part',
+                originalUrl
+            ];
+            contentType = 'video/mp4';
+            filename = `${safeTitle}.mp4`;
         }
 
-        res.header('Content-Disposition', `attachment; filename="${(title || 'video').replace(/[^a-z0-9]/gi, '_')}.${ext || 'mp4'}"`);
-        // We do NOT set Content-Length because we are streaming live from another process's stdout
-        // and we don't know the final size if ffmpeg merges things, or if it's chunked.
+        res.header('Content-Type', contentType);
+        res.header('Content-Disposition', `attachment; filename="${filename}"`);
 
         console.log(`[Stream Spawn] ${ytDlpCmd} ${args.join(' ')}`);
 
+        // Use spawn for better streaming performance
         const child = spawn(ytDlpCmd, args);
 
         child.stdout.pipe(res);
 
         child.stderr.on('data', (data) => {
-            // Log stderr but don't fail immediately, yt-dlp prints progress to stderr
             const msg = data.toString();
-            // Ignore progress bars
-            if (!msg.includes('[download]')) {
+            // Suppress verbose download bars from logs
+            if (!msg.includes('[download]') && !msg.includes('[ExtractAudio]')) {
                 console.error(`[yt-dlp stderr] ${msg}`);
             }
         });
@@ -120,13 +136,12 @@ app.get('/api/stream', (req, res) => {
         child.on('close', (code) => {
             if (code !== 0) {
                 console.error(`[Stream Exit] yt-dlp exited with code ${code}`);
-                if (!res.headersSent) res.status(500).send('Stream failed');
+                if (!res.headersSent) res.end();
             } else {
                 console.log('[Stream Complete]');
             }
         });
 
-        // Cleanup if client disconnects
         req.on('close', () => {
             if (child) child.kill();
         });
@@ -137,5 +152,5 @@ app.get('/api/stream', (req, res) => {
     }
 });
 
-const PORT = 5000;
+const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server: http://localhost:${PORT}`));
