@@ -82,22 +82,38 @@ app.post('/api/probe', async (req, res) => {
             formats
         });
     } catch (err) {
-        const msg = String(err.stderr || err.message || '');
-        console.error('[Probe Error]:', msg);
+        const stderr = String(err.stderr || '');
+        const msg = String(err.message || '');
+        const combined = stderr + ' ' + msg;
 
-        // ✅ detect login / bot / protected content cases
-        if (
-            msg.includes('login required') ||
-            msg.includes('Sign in to confirm') ||
-            msg.includes('sign in required') ||
-            msg.includes('requested content is not available') ||
-            msg.includes('Private video')
-        ) {
+        // Debug logging to help identify real errors vs false positives
+        console.error('yt-dlp stderr:', stderr);
+        console.error('yt-dlp message:', msg);
+
+        const loginPhrases = [
+            'Sign in to confirm you’re not a bot',
+            'sign in to confirm you\'re not a bot',
+            'sign in required',
+            'login required',
+            'rate-limit reached',
+            'requested content is not available',
+            'This content is age restricted',
+            'age-restricted',
+            'private video',
+            'this video is private'
+        ];
+
+        const isProtected = loginPhrases.some(p =>
+            combined.toLowerCase().includes(p.toLowerCase())
+        );
+
+        if (isProtected) {
             return res.status(403).json({
                 error: 'This video/reel is protected (login/age/region/private). Only public links are supported.'
             });
         }
 
+        console.error('yt-dlp probe error:', combined);
         res.status(500).json({ error: 'Failed to find video info. Please check the link.' });
     }
 });
