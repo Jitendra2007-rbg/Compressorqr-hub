@@ -5,6 +5,13 @@ interface DownloaderProps {
     showToast: (msg: string, type?: 'success' | 'info') => void;
 }
 
+// Dynamic API Base URL:
+// - Production (Render): Points to the Render backend URL
+// - Development: Points to localhost:10000
+const API_BASE = import.meta.env.PROD
+    ? 'https://compressorqr-hub.onrender.com'
+    : 'http://localhost:10000';
+
 const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
     const [url, setUrl] = useState('');
     const [isSearching, setIsSearching] = useState(false);
@@ -15,7 +22,7 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
         thumbnail: string | null;
         duration: string;
         original_url: string;
-        estimated_size_mb?: number; // Approximate size
+        estimated_size_mb?: number;
     } | null>(null);
 
     const handleSearch = async () => {
@@ -26,7 +33,7 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
         setDownloadStatus('idle');
 
         try {
-            const res = await fetch('/api/probe', {
+            const res = await fetch(`${API_BASE}/api/probe`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ url })
@@ -39,8 +46,7 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
 
             const data = await res.json();
 
-            // Calculate rough estimate of size (max video + audio)
-            // This is just a heuristic for the progress bar
+            // Calculate rough estimate of size
             const maxVideo = data.formats?.find((f: any) => f.resolution?.includes('720p') || f.resolution?.includes('1080p'))?.size || '10MB';
             const sizeNum = parseFloat(maxVideo.toString().replace('MB', '')) || 20;
 
@@ -65,16 +71,16 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
             const queryParams = new URLSearchParams({
                 originalUrl: videoData.original_url,
                 title: videoData.title,
-                type // 'video' or 'audio'
+                type
             });
 
-            const response = await fetch(`/api/stream?${queryParams}`);
+            const response = await fetch(`${API_BASE}/api/stream?${queryParams}`);
             if (!response.body) throw new Error('ReadableStream not supported');
 
             const contentLength = response.headers.get('Content-Length');
             const total = contentLength
                 ? parseInt(contentLength, 10)
-                : (videoData.estimated_size_mb || 25) * 1024 * 1024; // Fallback to estimate
+                : (videoData.estimated_size_mb || 25) * 1024 * 1024;
 
             let loaded = 0;
             const reader = response.body.getReader();
@@ -87,13 +93,11 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
                 if (value) {
                     chunks.push(value);
                     loaded += value.length;
-                    // Calculate percentage (cap at 99 until finished)
                     const percent = Math.min(Math.round((loaded / total) * 100), 99);
                     setProgress(percent);
                 }
             }
 
-            // Assemble Blob
             const blob = new Blob(chunks, { type: type === 'video' ? 'video/mp4' : 'audio/mpeg' });
             const downloadUrl = window.URL.createObjectURL(blob);
 
@@ -126,7 +130,6 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
                 <p className="text-gray-500">Save your favorite videos and music instantly.</p>
             </div>
 
-            {/* Search Bar */}
             <div className="bg-white rounded-2xl shadow-xl border border-emerald-100 p-2 flex gap-2 relative z-10">
                 <input
                     type="text"
@@ -145,7 +148,6 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
                 </button>
             </div>
 
-            {/* Result Card */}
             {videoData && (
                 <div className="bg-white rounded-3xl overflow-hidden shadow-2xl border border-gray-100 animate-in fade-in slide-in-from-bottom-4 duration-500">
                     <div className="relative h-64 md:h-80 bg-gray-900 group">
@@ -172,7 +174,6 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
                         </div>
                     </div>
 
-                    {/* Actions */}
                     <div className="p-8 bg-white">
                         {downloadStatus === 'downloading' ? (
                             <div className="space-y-4">

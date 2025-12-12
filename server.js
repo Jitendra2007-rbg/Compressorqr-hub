@@ -14,14 +14,10 @@ const __dirname = path.dirname(__filename);
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
-// Root route to check if backend is running (Render health check)
-app.get('/', (req, res) => {
-    res.send('Backend is running. Use /api/probe and /api/stream.');
-});
+// Serve static files from the React build (dist folder)
+app.use(express.static(path.join(__dirname, 'dist')));
 
 // Determine yt-dlp path based on environment
-// On Render (Linux), we use the one downloaded by postinstall into the root
-// Locally (Windows), we look for .exe or expect it in PATH
 const getYtDlpCommand = () => {
     if (process.env.RENDER) return './yt-dlp';
     if (fs.existsSync(path.join(__dirname, 'yt-dlp.exe'))) return path.join(__dirname, 'yt-dlp.exe');
@@ -37,14 +33,12 @@ app.post('/api/probe', async (req, res) => {
 
     try {
         const ytDlpCmd = getYtDlpCommand();
-        // --dump-json gives us metadata
         const command = `"${ytDlpCmd}" --dump-json --flat-playlist "${url}"`;
 
         const { stdout } = await execAsync(command, { maxBuffer: 1024 * 1024 * 50 });
         const videoInfo = JSON.parse(stdout.split('\n')[0]);
         console.log(`[Probe Success] Title: ${videoInfo.title}`);
 
-        // We filter formats just for information, but frontend relies mostly on Video/Audio buttons now
         const formats = (videoInfo.formats || [])
             .filter(f => f.vcodec !== 'none' || f.acodec !== 'none')
             .sort((a, b) => (b.filesize || 0) - (a.filesize || 0))
@@ -88,7 +82,6 @@ app.get('/api/stream', (req, res) => {
         let filename = '';
 
         if (type === 'audio') {
-            // Audio Only: Best audio, extract to MP3
             args = [
                 '-f', 'bestaudio',
                 '--extract-audio',
@@ -96,13 +89,12 @@ app.get('/api/stream', (req, res) => {
                 '--audio-quality', '0',
                 '-o', '-',
                 '--no-playlist',
-                '--no-part', // Write directly to stdout
+                '--no-part',
                 originalUrl
             ];
             contentType = 'audio/mpeg';
             filename = `${safeTitle}.mp3`;
         } else {
-            // Video + Audio (Default): Merge max 720p
             args = [
                 '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
                 '--merge-output-format', 'mp4',
@@ -120,14 +112,12 @@ app.get('/api/stream', (req, res) => {
 
         console.log(`[Stream Spawn] ${ytDlpCmd} ${args.join(' ')}`);
 
-        // Use spawn for better streaming performance
         const child = spawn(ytDlpCmd, args);
 
         child.stdout.pipe(res);
 
         child.stderr.on('data', (data) => {
             const msg = data.toString();
-            // Suppress verbose download bars from logs
             if (!msg.includes('[download]') && !msg.includes('[ExtractAudio]')) {
                 console.error(`[yt-dlp stderr] ${msg}`);
             }
@@ -150,6 +140,14 @@ app.get('/api/stream', (req, res) => {
         console.error('[Stream Setup Error]:', err);
         if (!res.headersSent) res.status(500).json({ error: err.message });
     }
+});
+
+// Catch-all route to serve the React app (Client-side routing support)
+// This must be AFTER API routes
+// Catch-all route to serve the React app (Client-side routing support)
+// This must be AFTER API routes
+app.get('/*splat', (req, res) => {
+    res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 const PORT = process.env.PORT || 10000;
