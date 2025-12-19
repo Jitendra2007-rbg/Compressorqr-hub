@@ -8,7 +8,7 @@
     "start": "node server.js",
     "build": "vite build",
     "preview": "vite preview",
-    "postinstall": "npm run build && if [ \"$RENDER\" = \"true\" ]; then curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ./yt-dlp && chmod +x ./yt-dlp; fi"
+    "postinstall": "curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o ./yt-dlp && chmod +x ./yt-dlp && apt-get update && apt-get install -y ffmpeg"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.39.8",

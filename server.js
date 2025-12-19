@@ -6,31 +6,21 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+import stream from 'stream';
 
 const execAsync = promisify(exec);
 const app = express();
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Ensure uploads directory exists
+// Ensure uploads directory exists (keeping this just in case, though mostly unused now)
 const uploadDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadDir)) {
     fs.mkdirSync(uploadDir);
 }
 
-// Configure multer storage
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-        // Create unique ID: timestamp-random-originalExt
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        const ext = path.extname(file.originalname);
-        cb(null, uniqueSuffix + ext);
-    }
-});
-const upload = multer({ storage: storage });
+// Old multer disk storage removed in favor of memory storage for Supabase
+app.use(cors({ origin: '*' }));
 
 app.use(cors({ origin: '*' }));
 app.use(express.json());
@@ -46,6 +36,47 @@ const getYtDlpCommand = () => {
 };
 
 // ---- PROBE: get title + formats ----
+// Configure Supabase (Hardcoded credentials from utils/supabaseClient.ts for consistency)
+import { createClient } from '@supabase/supabase-js';
+const SUPABASE_URL = 'https://rsgjfcojabqkohonxyky.supabase.co';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJzZ2pmY29qYWJxa29ob254eWt5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjU1MTYwMzEsImV4cCI6MjA4MTA5MjAzMX0.IzuxoVNOR61laITvOuOBPpsAqWC6ZdnUQX3thSZ5AdE';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Handle Instagram Fallback (Direct extraction for Reels)
+async function handleInstagramFallback(url, res) {
+    try {
+        console.log('[Instagram Fallback] Attempting direct extraction...');
+        const ytDlpCmd = getYtDlpCommand();
+        // Use best quality matching video+audio
+        const command = `"${ytDlpCmd}" --dump-json --no-warnings "${url}"`;
+
+        const { stdout } = await execAsync(command, { maxBuffer: 1024 * 1024 * 50 });
+        const videoInfo = JSON.parse(stdout);
+
+        console.log(`[Instagram Fallback] Success: ${videoInfo.title}`);
+
+        return res.json({
+            title: videoInfo.title || 'Instagram Reel',
+            thumbnail: videoInfo.thumbnail,
+            duration: videoInfo.duration,
+            original_url: url,
+            formats: [{
+                format_id: 'best',
+                ext: 'mp4',
+                resolution: 'High Quality',
+                size: 'Stream',
+                note: 'Direct Stream',
+                is_video_only: false,
+                is_audio_only: false
+            }]
+        });
+    } catch (err) {
+        console.error('[Instagram Fallback] Failed:', err.message);
+        return res.status(500).json({ error: 'Failed to extract Instagram Reel. Make sure it is public.' });
+    }
+}
+
+// ---- PROBE: get title + formats ----
 app.post('/api/probe', async (req, res) => {
     const { url } = req.body;
     console.log(`[Probe Request] Processing URL: ${url}`);
@@ -54,67 +85,88 @@ app.post('/api/probe', async (req, res) => {
 
     try {
         const ytDlpCmd = getYtDlpCommand();
-        const command = `"${ytDlpCmd}" --dump-json --flat-playlist "${url}"`;
 
-        const { stdout } = await execAsync(command, { maxBuffer: 1024 * 1024 * 50 });
-        const videoInfo = JSON.parse(stdout.split('\n')[0]);
-        console.log(`[Probe Success] Title: ${videoInfo.title}`);
-
-        const formats = (videoInfo.formats || [])
-            .filter(f => f.vcodec !== 'none' || f.acodec !== 'none')
-            .sort((a, b) => (b.filesize || 0) - (a.filesize || 0))
-            .slice(0, 20)
-            .map(f => ({
-                format_id: f.format_id,
-                ext: f.ext,
-                resolution: f.resolution || (f.height ? `${f.height}p` : 'audio only'),
-                size: f.filesize ? `${(f.filesize / 1024 / 1024).toFixed(2)}MB` : 'Stream',
-                note: f.format_note,
-                is_video_only: f.acodec === 'none' && f.vcodec !== 'none',
-                is_audio_only: f.vcodec === 'none' && f.acodec !== 'none'
-            }));
-
-        res.json({
-            title: videoInfo.title,
-            thumbnail: videoInfo.thumbnail,
-            duration: videoInfo.duration,
-            original_url: url,
-            formats
-        });
-    } catch (err) {
-        const stderr = String(err.stderr || '');
-        const msg = String(err.message || '');
-        const combined = stderr + ' ' + msg;
-
-        // Debug logging to help identify real errors vs false positives
-        console.error('yt-dlp stderr:', stderr);
-        console.error('yt-dlp message:', msg);
-
-        const loginPhrases = [
-            'Sign in to confirm you’re not a bot',
-            'sign in to confirm you\'re not a bot',
-            'sign in required',
-            'login required',
-            'rate-limit reached',
-            'requested content is not available',
-            'This content is age restricted',
-            'age-restricted',
-            'private video',
-            'this video is private'
-        ];
-
-        const isProtected = loginPhrases.some(p =>
-            combined.toLowerCase().includes(p.toLowerCase())
-        );
-
-        if (isProtected) {
-            return res.status(403).json({
-                error: 'This video/reel is protected (login/age/region/private). Only public links are supported.'
-            });
+        // Fallback for Instagram Reels (direct extraction)
+        if (url.includes('instagram.com/reel')) {
+            return handleInstagramFallback(url, res);
         }
 
-        console.error('yt-dlp probe error:', combined);
-        res.status(500).json({ error: 'Failed to find video info. Please check the link.' });
+        // yt-dlp with production flags
+        const command = [
+            ytDlpCmd,
+            '--dump-json',
+            '--no-warnings',
+            '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            '--referer', url,
+            '--cookies-from-browser', 'chrome',  // fallback if cookies.txt exists
+            url
+        ];
+
+        // Using spawn for better argument handling than exec
+        const child = spawn(command[0], command.slice(1));
+
+        let stdout = '';
+        let stderr = '';
+
+        child.stdout.on('data', (data) => stdout += data);
+        child.stderr.on('data', (data) => stderr += data);
+
+        child.on('close', (code) => {
+            if (code !== 0) {
+                console.error('yt-dlp stderr:', stderr);
+
+                const loginPhrases = [
+                    'Sign in to confirm you’re not a bot',
+                    'sign in required',
+                    'login required',
+                    'private video',
+                    'this video is private'
+                ];
+
+                const isProtected = loginPhrases.some(p => stderr.toLowerCase().includes(p.toLowerCase()));
+
+                if (isProtected) {
+                    return res.status(403).json({
+                        error: 'This video is protected (private/login required). Only public links supported.'
+                    });
+                }
+
+                return res.status(500).json({ error: 'Failed to fetch video info.' });
+            }
+
+            try {
+                const videoInfo = JSON.parse(stdout);
+
+                const formats = (videoInfo.formats || [])
+                    .filter(f => f.vcodec !== 'none' || f.acodec !== 'none')
+                    .sort((a, b) => (b.filesize || 0) - (a.filesize || 0))
+                    .slice(0, 20)
+                    .map(f => ({
+                        format_id: f.format_id,
+                        ext: f.ext,
+                        resolution: f.resolution || (f.height ? `${f.height}p` : 'audio only'),
+                        size: f.filesize ? `${(f.filesize / 1024 / 1024).toFixed(2)}MB` : 'Stream',
+                        note: f.format_note,
+                        is_video_only: f.acodec === 'none' && f.vcodec !== 'none',
+                        is_audio_only: f.vcodec === 'none' && f.acodec !== 'none'
+                    }));
+
+                res.json({
+                    title: videoInfo.title,
+                    thumbnail: videoInfo.thumbnail,
+                    duration: videoInfo.duration,
+                    original_url: url,
+                    formats
+                });
+            } catch (err) {
+                console.error('JSON Parse Error:', err);
+                res.status(500).json({ error: 'Failed to pars video metadata.' });
+            }
+        });
+
+    } catch (err) {
+        console.error('Probe Error:', err);
+        res.status(500).json({ error: 'Internal server error during probe.' });
     }
 });
 
@@ -195,24 +247,70 @@ app.get('/api/stream', (req, res) => {
 });
 
 // ---- FILE UPLOAD & SHARE ----
-app.post('/api/upload', upload.single('file'), (req, res) => {
+// Use memory storage for Supabase upload
+const upload = multer({ storage: multer.memoryStorage() });
+
+app.post('/api/upload', upload.single('file'), async (req, res) => {
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
 
-    // Construct download URL
-    const downloadUrl = `${req.protocol}://${req.get('host')}/share/${req.file.filename}`;
+    try {
+        const uniqueId = Date.now() + '-' + Math.round(Math.random() * 1E9) + path.extname(req.file.originalname);
 
-    res.json({
-        id: req.file.filename,
-        downloadUrl: downloadUrl
-    });
+        // Upload to Supabase
+        const { data, error } = await supabase.storage
+            .from('user-files')
+            .upload(uniqueId, req.file.buffer, {
+                contentType: req.file.mimetype
+            });
+
+        if (error) throw error;
+
+        // Construct download URL
+        // const downloadUrl = `${req.protocol}://${req.get('host')}/share/${uniqueId}`;
+        const downloadUrl = `https://compressorqr-hub.onrender.com/share/${uniqueId}`;
+
+        res.json({
+            id: uniqueId,
+            downloadUrl: downloadUrl
+        });
+    } catch (err) {
+        console.error('Upload Error:', err);
+        res.status(500).json({ error: 'Upload failed' });
+    }
 });
 
-app.get('/share/:id', (req, res) => {
-    const filePath = path.join(uploadDir, req.params.id);
-    if (fs.existsSync(filePath)) {
-        res.download(filePath); // Forces download
-    } else {
-        res.status(404).send('File not found or expired.');
+app.get('/share/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+
+        // Method 1: Supabase Storage (recommended)
+        const { data, error } = await supabase.storage
+            .from('user-files')  // your bucket name
+            .download(`${id}`);  // filename = id
+
+        if (error || !data) {
+            return res.status(404).send('File not found');
+        }
+
+        // Set headers for download
+        res.set({
+            'Content-Type': data.type || 'application/octet-stream',
+            'Content-Disposition': `attachment; filename="${id}"`,
+            'Cache-Control': 'public, max-age=3600'
+        });
+
+        // Stream file - data is a Blob/File object from Supabase JS client
+        // Need to convert to Node stream
+        const arrayBuffer = await data.arrayBuffer();
+        const buffer = Buffer.from(arrayBuffer);
+
+        const readStream = new stream.PassThrough();
+        readStream.end(buffer);
+        readStream.pipe(res);
+
+    } catch (err) {
+        console.error('Share Error:', err);
+        res.status(404).send('File not found or expired');
     }
 });
 

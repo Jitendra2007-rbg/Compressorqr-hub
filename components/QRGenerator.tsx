@@ -36,7 +36,9 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({ showToast }) => {
         if (!res.ok) throw new Error('Upload failed');
 
         const data = await res.json();
-        setContent(data.downloadUrl);
+        // Use API_BASE to ensure consistency between dev/prod
+        const shareUrl = `${API_BASE}/share/${data.id}`;
+        setContent(shareUrl);
 
         const status = await addToHistory({
           action: 'Generated File QR',
