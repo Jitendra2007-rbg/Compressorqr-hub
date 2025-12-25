@@ -119,8 +119,8 @@ app.post('/api/probe', async (req, res) => {
 
 // ---- STREAM: Download Video or Audio ----
 app.get('/api/stream', (req, res) => {
-    const { originalUrl, title, type } = req.query; // type: 'video' | 'audio'
-    console.log(`[Stream Request] ${title} | ${originalUrl} | Type: ${type}`);
+    const { originalUrl, title, type, quality } = req.query; // type: 'video' | 'audio', quality: '1080p' etc.
+    console.log(`[Stream Request] ${title} | ${originalUrl} | Type: ${type} | Quality: ${quality}`);
 
     if (!originalUrl) return res.status(400).json({ error: 'Original URL required' });
 
@@ -147,9 +147,19 @@ app.get('/api/stream', (req, res) => {
             contentType = 'audio/mpeg';
             filename = `${safeTitle}.mp3`;
         } else {
+            // Quality Selection Logic
+            let formatSelection = 'bestvideo+bestaudio/best';
+            if (quality) {
+                const height = parseInt(quality, 10);
+                if (!isNaN(height)) {
+                    // Try to get exact height, or closest below it
+                    formatSelection = `bestvideo[height<=${height}]+bestaudio/best[height<=${height}]`;
+                }
+            }
+
             args = [
                 '--ffmpeg-location', ffmpegPath,
-                '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
+                '-f', formatSelection,
                 '--merge-output-format', 'mp4',
                 '-o', '-',
                 '--no-playlist',
@@ -157,7 +167,7 @@ app.get('/api/stream', (req, res) => {
                 originalUrl
             ];
             contentType = 'video/mp4';
-            filename = `${safeTitle}.mp4`;
+            filename = `${safeTitle}_${quality || 'best'}.mp4`;
         }
 
         res.header('Content-Type', contentType);
