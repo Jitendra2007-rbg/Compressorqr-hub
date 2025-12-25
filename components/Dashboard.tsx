@@ -36,7 +36,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewChange }) => {
 
       <div className="grid md:grid-cols-3 gap-4">
         {/* Compress Media Card */}
-        <button 
+        <button
           onClick={() => onViewChange(AppView.COMPRESSOR)}
           className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:border-emerald-200 hover:shadow-md transition-all group flex flex-col justify-between text-left h-40"
         >
@@ -50,7 +50,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewChange }) => {
         </button>
 
         {/* Generate QR Card */}
-        <button 
+        <button
           onClick={() => onViewChange(AppView.QR_GENERATOR)}
           className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:border-blue-200 hover:shadow-md transition-all group flex flex-col justify-between text-left h-40"
         >
@@ -64,7 +64,7 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewChange }) => {
         </button>
 
         {/* Link Downloader Card */}
-        <button 
+        <button
           onClick={() => onViewChange(AppView.DOWNLOADER)}
           className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 hover:border-purple-200 hover:shadow-md transition-all group flex flex-col justify-between text-left h-40"
         >
@@ -81,31 +81,31 @@ const Dashboard: React.FC<DashboardProps> = ({ onViewChange }) => {
       <div>
         <h3 className="text-xl font-semibold text-gray-800 mb-4">Recent Activity</h3>
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-           {recentItems.length > 0 ? (
-             <div className="divide-y divide-gray-50">
-                {recentItems.map((item) => (
-                    <div key={item.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-gray-50 rounded-lg">
-                                {getIcon(item.type)}
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-gray-900">{item.action}</p>
-                                <p className="text-xs text-gray-500 truncate max-w-[200px]">{item.file}</p>
-                            </div>
-                        </div>
-                        <div className="text-right">
-                             {item.size && <p className="text-xs font-medium text-emerald-600">{item.size}</p>}
-                             <p className="text-[10px] text-gray-400">{formatDate(item.date)}</p>
-                        </div>
+          {recentItems.length > 0 ? (
+            <div className="divide-y divide-gray-50">
+              {recentItems.map((item) => (
+                <div key={item.id} className="p-4 flex items-center justify-between hover:bg-gray-50 transition-colors">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-gray-50 rounded-lg">
+                      {getIcon(item.type)}
                     </div>
-                ))}
-             </div>
-           ) : (
-             <div className="p-12 text-center text-gray-400">
-                No recent activity found. Start compressing or downloading!
-             </div>
-           )}
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">{item.action}</p>
+                      <p className="text-xs text-gray-500 truncate max-w-[200px]">{item.file}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    {item.size && <p className="text-xs font-medium text-emerald-600">{item.size}</p>}
+                    <p className="text-[10px] text-gray-400">{formatDate(item.date)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="p-12 text-center text-gray-400">
+              No recent activity found. Start compressing or downloading!
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -35,17 +35,118 @@ const App: React.FC = () => {
     setToast({ msg, type });
   };
 
-  // Check URL for shared file view
+  // SEO Title Mapping
+  const titles: Record<AppView, string> = {
+    [AppView.DASHBOARD]: 'CompressorQR Hub – Image Compressor & QR Generator',
+    [AppView.COMPRESSOR]: 'Online Image Compressor – Reduce Image Size in KB',
+    [AppView.QR_GENERATOR]: 'QR Code Generator – Create and Scan QR Codes Online',
+    [AppView.DOWNLOADER]: 'Link Tools – Preview, Shorten and Manage URLs',
+    [AppView.PROFILE]: 'User Profile - CompressorQR Hub',
+    [AppView.UPGRADE]: 'Upgrade Plans - CompressorQR Hub',
+    [AppView.AUTH]: 'Login / Sign Up - CompressorQR Hub',
+    [AppView.FILE_VIEWER]: 'File Viewer - CompressorQR Hub',
+    [AppView.ABOUT]: 'About CompressorQR Hub',
+    [AppView.CONTACT]: 'Contact Us - CompressorQR Hub',
+    [AppView.PRIVACY]: 'Privacy Policy - CompressorQR Hub',
+    [AppView.TERMS]: 'Terms of Service - CompressorQR Hub',
+  };
+
+  const descriptions: Record<AppView, string> = {
+    [AppView.DASHBOARD]: 'Online image compressor, QR code generator, and link tools. Compress images, create QR codes, and manage files for free with CompressorQR Hub.',
+    [AppView.COMPRESSOR]: 'Use our online image compressor to shrink JPG, PNG and WebP files to specific KB sizes like 10KB, 20KB, 50KB or 100KB.',
+    [AppView.QR_GENERATOR]: 'Generate QR codes for links, text, Wi‑Fi or contacts. Download high‑quality QR images for print and social media.',
+    [AppView.DOWNLOADER]: 'Analyze and manage links. Inspect URLs, turn them into QR codes, and create clean share links.',
+    [AppView.PROFILE]: 'Manage your CompressorQR Hub profile and settings.',
+    [AppView.UPGRADE]: 'Upgrade to CompressorQR Hub Pro for more features.',
+    [AppView.AUTH]: 'Login or Create an account to save your history.',
+    [AppView.FILE_VIEWER]: 'View and download shared files.',
+    [AppView.ABOUT]: 'Learn more about CompressorQR Hub tools.',
+    [AppView.CONTACT]: 'Get in touch with the CompressorQR Hub team.',
+    [AppView.PRIVACY]: 'Privacy Policy for CompressorQR Hub.',
+    [AppView.TERMS]: 'Terms of Service for CompressorQR Hub.',
+  };
+
+  const routes: Record<string, AppView> = {
+    '/': AppView.DASHBOARD,
+    '/compressor': AppView.COMPRESSOR,
+    '/qr-generator': AppView.QR_GENERATOR,
+    '/downloader': AppView.DOWNLOADER,
+    '/profile': AppView.PROFILE,
+    '/upgrade': AppView.UPGRADE,
+    '/auth': AppView.AUTH,
+    '/about': AppView.ABOUT,
+    '/contact': AppView.CONTACT,
+    '/privacy': AppView.PRIVACY,
+    '/terms': AppView.TERMS
+  };
+
+  const routeReverse: Record<string, string> = Object.fromEntries(
+    Object.entries(routes).map(([k, v]) => [v, k])
+  );
+
+  // Handle URL on mount and popstate
   useEffect(() => {
-    const path = window.location.pathname;
-    if (path.startsWith('/view/')) {
-      const id = path.replace('/view/', '');
-      if (id) {
-        setViewFileId(id);
-        setCurrentView(AppView.FILE_VIEWER);
+    const handleNavigation = () => {
+      const path = window.location.pathname;
+      if (path.startsWith('/view/')) {
+        const id = path.replace('/view/', '');
+        if (id) {
+          setViewFileId(id);
+          setCurrentView(AppView.FILE_VIEWER);
+        }
+      } else {
+        // Find view for path (exact match)
+        const view = routes[path] || AppView.DASHBOARD;
+        setCurrentView(view);
+        setViewFileId(null);
+      }
+    };
+
+    handleNavigation(); // Initial load
+    window.addEventListener('popstate', handleNavigation);
+    return () => window.removeEventListener('popstate', handleNavigation);
+  }, []);
+
+  // Update URL, Title & Meta Description when view changes
+  useEffect(() => {
+    let title = titles[currentView] || 'CompressorQR Hub';
+    let desc = descriptions[currentView] || '';
+
+    // Specialized Logic for Compressor Target URL (e.g., ?target=25kb)
+    if (currentView === AppView.COMPRESSOR) {
+      const params = new URLSearchParams(window.location.search);
+      const target = params.get('target');
+      if (target) {
+        // Auto-update SEO info for this specific target
+        title = `Compress Image to ${target.toUpperCase()} - Online Image Compressor`;
+        desc = `Compress your images to exactly ${target.toUpperCase()} online. Fast, free and secure image compression to ${target.toUpperCase()}.`;
       }
     }
-  }, []);
+
+    document.title = title;
+
+    // Update Meta Description
+    let metaDesc = document.querySelector("meta[name='description']");
+    if (!metaDesc) {
+      metaDesc = document.createElement('meta');
+      metaDesc.setAttribute('name', 'description');
+      document.head.appendChild(metaDesc);
+    }
+    metaDesc.setAttribute('content', desc);
+
+    // Update URL if not already matching (to avoid creating history on popstate)
+    const targetPath = currentView === AppView.FILE_VIEWER
+      ? (viewFileId ? `/view/${viewFileId}` : '/')
+      : (routeReverse[currentView] || '/');
+
+    // Preserve query params if on Compressor
+    const search = (currentView === AppView.COMPRESSOR) ? window.location.search : '';
+    const fullPath = targetPath + search;
+
+    if (window.location.pathname + window.location.search !== fullPath) {
+      window.history.pushState(null, '', fullPath);
+    }
+  }, [currentView, viewFileId]);
 
   const renderView = () => {
     switch (currentView) {
