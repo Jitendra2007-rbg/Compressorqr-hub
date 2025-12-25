@@ -219,9 +219,11 @@ app.get('/share/:filename', (req, res) => {
 
 
 // Catch-all route to serve the React app
-app.get('/*splat', (req, res) => {
+app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => console.log(`Server: http://localhost:${PORT}`));
+app.listen(PORT, '0.0.0.0', () => {
+    console.log('Server listening on port', PORT);
+});
