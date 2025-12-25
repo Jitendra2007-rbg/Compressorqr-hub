@@ -93,10 +93,26 @@ app.post('/api/probe', async (req, res) => {
                 });
             } catch (err) {
                 console.error('Probe JSON Parse Error:', err);
-                res.status(400).json({ error: 'Invalid video data' });
+                res.status(500).json({ error: 'Failed to process video data.' });
             }
         } else {
-            res.status(400).json({ error: 'Private/protected video. Only public links work.' });
+            console.error(`[Probe Error] yt-dlp exited with code ${code}`);
+            // Extract meaningful error from output/stderr
+            // Usually yt-dlp errors are in stderr which we piped to 'output' variable in lines 68-69? 
+            // Wait, line 68/69 appends both stdout and stderr to 'output'.
+            // So 'output' contains the error message.
+
+            const isInstagram = url.includes('instagram.com');
+            const errorMsg = output.toLowerCase();
+
+            if (isInstagram && (errorMsg.includes('400') || errorMsg.includes('unable to extract'))) {
+                res.status(400).json({ error: 'Instagram blocked the request. This is a common issue with Reels.' });
+            } else if (errorMsg.includes('private') || errorMsg.includes('sign in')) {
+                res.status(400).json({ error: 'This video is private or requires login.' });
+            } else {
+                console.error('[Probe Data]:', output); // Log full output for debugging
+                res.status(400).json({ error: 'Could not fetch video info. The link might be invalid or protected.' });
+            }
         }
     });
 });
