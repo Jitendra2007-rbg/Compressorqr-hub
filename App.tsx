@@ -10,6 +10,11 @@ import Upgrade from './components/Upgrade';
 import Auth from './components/Auth';
 import Sidebar from './components/Sidebar';
 import FileViewer from './components/FileViewer';
+import Footer from './components/Footer';
+import About from './components/About';
+import Contact from './components/Contact';
+import Privacy from './components/Privacy';
+import Terms from './components/Terms';
 import { supabase } from './utils/supabaseClient';
 
 const App: React.FC = () => {
@@ -67,6 +72,10 @@ const App: React.FC = () => {
           setCurrentView(AppView.DASHBOARD);
           setViewFileId(null);
         }} /> : <Dashboard onViewChange={setCurrentView} />;
+      case AppView.ABOUT: return <About />;
+      case AppView.CONTACT: return <Contact />;
+      case AppView.PRIVACY: return <Privacy />;
+      case AppView.TERMS: return <Terms />;
       default:
         return <Dashboard onViewChange={setCurrentView} />;
     }
@@ -80,7 +89,12 @@ const App: React.FC = () => {
       case AppView.DOWNLOADER: return 'Universal Downloader';
       case AppView.PROFILE: return 'Profile';
       case AppView.UPGRADE: return 'Pro Plans';
+      case AppView.UPGRADE: return 'Pro Plans';
       case AppView.AUTH: return 'Account';
+      case AppView.ABOUT: return 'About Us';
+      case AppView.CONTACT: return 'Contact';
+      case AppView.PRIVACY: return 'Privacy Policy';
+      case AppView.TERMS: return 'Terms of Service';
       default: return 'CompressQR';
     }
   };
@@ -144,6 +158,12 @@ const App: React.FC = () => {
           <div className="max-w-4xl mx-auto w-full">
             {renderView()}
           </div>
+          {/* Footer for standard views */}
+          {currentView !== AppView.FILE_VIEWER && <Footer onNavigate={(view) => {
+            setCurrentView(view);
+            // Scroll to top
+            document.querySelector('main')?.scrollTo(0, 0);
+          }} />}
         </main>
       </div>
     </div>
