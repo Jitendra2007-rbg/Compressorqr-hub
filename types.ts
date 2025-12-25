@@ -5,7 +5,8 @@ export enum AppView {
   DOWNLOADER = 'DOWNLOADER',
   PROFILE = 'PROFILE',
   UPGRADE = 'UPGRADE',
-  AUTH = 'AUTH'
+  AUTH = 'AUTH',
+  FILE_VIEWER = 'FILE_VIEWER'
 }
 
 export interface ActivityItem {

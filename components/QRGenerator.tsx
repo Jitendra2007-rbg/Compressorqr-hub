@@ -36,8 +36,8 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({ showToast }) => {
         if (!res.ok) throw new Error('Upload failed');
 
         const data = await res.json();
-        // Use API_BASE to ensure consistency between dev/prod
-        const shareUrl = `${API_BASE}/share/${data.id}`;
+        // Use API_BASE to ensure consistency, but point to frontend route /view/
+        const shareUrl = `${API_BASE}/view/${data.id}`;
         setContent(shareUrl);
 
         const status = await addToHistory({

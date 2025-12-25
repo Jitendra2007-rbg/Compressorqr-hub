@@ -6,6 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+import ffmpegPath from 'ffmpeg-static';
 
 // Fix for __dirname in ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -117,6 +118,7 @@ app.get('/api/stream', (req, res) => {
 
         if (type === 'audio') {
             args = [
+                '--ffmpeg-location', ffmpegPath,
                 '-f', 'bestaudio',
                 '--extract-audio',
                 '--audio-format', 'mp3',
@@ -130,6 +132,7 @@ app.get('/api/stream', (req, res) => {
             filename = `${safeTitle}.mp3`;
         } else {
             args = [
+                '--ffmpeg-location', ffmpegPath,
                 '-f', 'bestvideo[height<=720]+bestaudio/best[height<=720]',
                 '--merge-output-format', 'mp4',
                 '-o', '-',
@@ -203,10 +206,17 @@ app.get('/share/:filename', (req, res) => {
     `);
     }
 
-    res.download(filePath, (err) => {
-        if (err) res.status(404).send('File not found');
-    });
+    const isPreview = req.query.preview === 'true';
+
+    if (isPreview) {
+        res.sendFile(filePath);
+    } else {
+        res.download(filePath, (err) => {
+            if (err && !res.headersSent) res.status(404).send('File not found');
+        });
+    }
 });
+
 
 // Catch-all route to serve the React app
 app.get('/*splat', (req, res) => {

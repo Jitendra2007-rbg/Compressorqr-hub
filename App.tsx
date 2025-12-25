@@ -9,12 +9,14 @@ import Profile from './components/Profile';
 import Upgrade from './components/Upgrade';
 import Auth from './components/Auth';
 import Sidebar from './components/Sidebar';
+import FileViewer from './components/FileViewer';
 import { supabase } from './utils/supabaseClient';
 
 const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<AppView>(AppView.DASHBOARD);
+  const [viewFileId, setViewFileId] = useState<string | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const [toast, setToast] = useState<{msg: string, type: 'success' | 'info' | 'error'} | null>(null);
+  const [toast, setToast] = useState<{ msg: string, type: 'success' | 'info' | 'error' } | null>(null);
 
   // Auto-clear toast
   useEffect(() => {
@@ -27,6 +29,18 @@ const App: React.FC = () => {
   const showToast = (msg: string, type: 'success' | 'info' | 'error' = 'info') => {
     setToast({ msg, type });
   };
+
+  // Check URL for shared file view
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith('/view/')) {
+      const id = path.replace('/view/', '');
+      if (id) {
+        setViewFileId(id);
+        setCurrentView(AppView.FILE_VIEWER);
+      }
+    }
+  }, []);
 
   const renderView = () => {
     switch (currentView) {
@@ -44,9 +58,15 @@ const App: React.FC = () => {
         return <Upgrade />;
       case AppView.AUTH:
         return <Auth onSuccess={() => {
-            setCurrentView(AppView.DASHBOARD);
-            showToast("Successfully logged in!", "success");
+          setCurrentView(AppView.DASHBOARD);
+          showToast("Successfully logged in!", "success");
         }} onViewChange={setCurrentView} />;
+      case AppView.FILE_VIEWER:
+        return viewFileId ? <FileViewer id={viewFileId} onBack={() => {
+          window.history.pushState(null, '', '/');
+          setCurrentView(AppView.DASHBOARD);
+          setViewFileId(null);
+        }} /> : <Dashboard onViewChange={setCurrentView} />;
       default:
         return <Dashboard onViewChange={setCurrentView} />;
     }
@@ -70,29 +90,28 @@ const App: React.FC = () => {
       {/* Toast Notification */}
       {toast && (
         <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-50 animate-bounce">
-          <div className={`px-6 py-3 rounded-full shadow-xl text-white text-sm font-medium ${
-            toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-600'
-          }`}>
-             {toast.msg}
+          <div className={`px-6 py-3 rounded-full shadow-xl text-white text-sm font-medium ${toast.type === 'success' ? 'bg-emerald-500' : toast.type === 'error' ? 'bg-red-500' : 'bg-blue-600'
+            }`}>
+            {toast.msg}
           </div>
         </div>
       )}
 
       {/* Mobile Sidebar Overlay */}
       {isSidebarOpen && (
-        <div 
+        <div
           className="fixed inset-0 bg-black/50 z-20 lg:hidden"
           onClick={() => setIsSidebarOpen(false)}
         />
       )}
 
       {/* Sidebar */}
-      <Sidebar 
-        currentView={currentView} 
+      <Sidebar
+        currentView={currentView}
         setCurrentView={(view) => {
           setCurrentView(view);
           setIsSidebarOpen(false);
-        }} 
+        }}
         isOpen={isSidebarOpen}
         setIsOpen={setIsSidebarOpen}
       />
@@ -102,16 +121,16 @@ const App: React.FC = () => {
         {/* Top Header */}
         <header className="h-16 bg-white border-b border-gray-100 flex items-center px-4 justify-between shrink-0 z-10">
           <div className="flex items-center gap-3">
-            <button 
+            <button
               onClick={() => setIsSidebarOpen(true)}
               className="lg:hidden p-2 hover:bg-gray-100 rounded-full transition-colors"
             >
               <Menu size={24} className="text-gray-600" />
             </button>
             <div className="flex items-center gap-2 lg:hidden">
-               <div className="text-emerald-500 font-bold text-xl tracking-tight flex items-center gap-1">
-                 <span className="text-2xl">⇲</span> CompressQR
-               </div>
+              <div className="text-emerald-500 font-bold text-xl tracking-tight flex items-center gap-1">
+                <span className="text-2xl">⇲</span> CompressQR
+              </div>
             </div>
             {/* Desktop Breadcrumb/Title */}
             <h1 className="hidden lg:block text-xl font-semibold text-gray-800 ml-2">
