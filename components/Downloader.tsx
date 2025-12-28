@@ -39,6 +39,20 @@ const Downloader: React.FC<DownloaderProps> = ({ showToast }) => {
 
     const handleSearch = async () => {
         if (!url) return;
+
+        // Redirect Logic for YouTube and Instagram
+        if (url.includes('youtube.com') || url.includes('youtu.be')) {
+            window.open(`https://www.y2mate.com/youtube/${url}`, '_blank');
+            showToast("Opening YouTube downloader...", "success");
+            return;
+        }
+
+        if (url.includes('instagram.com')) {
+            window.open('https://snapinsta.app/', '_blank');
+            showToast("Opening Instagram downloader...", "success");
+            return;
+        }
+
         setIsSearching(true);
         setVideoData(null);
         setError('');

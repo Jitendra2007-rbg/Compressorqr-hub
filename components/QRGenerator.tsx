@@ -18,27 +18,48 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({ showToast }) => {
   const qrRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [uploadProgress, setUploadProgress] = useState(0);
+
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
       setSelectedFile(file);
-      setContent('Uploading...'); // Temporary state
+      setContent('Uploading...');
+      setUploadProgress(0);
 
       try {
         const formData = new FormData();
         formData.append('file', file);
 
-        const res = await fetch(`${API_BASE}/api/upload`, {
-          method: 'POST',
-          body: formData
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `${API_BASE}/api/upload`, true);
+
+        xhr.upload.onprogress = (event) => {
+          if (event.lengthComputable) {
+            const percentComplete = Math.round((event.loaded / event.total) * 100);
+            setUploadProgress(percentComplete);
+          }
+        };
+
+        const promise = new Promise((resolve, reject) => {
+          xhr.onload = () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+              resolve(JSON.parse(xhr.responseText));
+            } else {
+              reject(new Error('Upload failed'));
+            }
+          };
+          xhr.onerror = () => reject(new Error('Upload failed'));
         });
 
-        if (!res.ok) throw new Error('Upload failed');
+        xhr.send(formData);
 
-        const data = await res.json();
+        const data: any = await promise;
+
         // Use API_BASE to ensure consistency, but point to frontend route /view/
         const shareUrl = `${API_BASE}/view/${data.id}`;
         setContent(shareUrl);
+        setUploadProgress(100);
 
         const status = await addToHistory({
           action: 'Generated File QR',
@@ -53,6 +74,7 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({ showToast }) => {
         showToast("Failed to upload file. Please try again.", "info");
         setContent('');
         setSelectedFile(null);
+        setUploadProgress(0);
       }
     }
   };
@@ -137,17 +159,27 @@ const QRGenerator: React.FC<QRGeneratorProps> = ({ showToast }) => {
             />
 
             {selectedFile ? (
-              <div className="flex items-center gap-3 relative z-10" onClick={(e) => e.stopPropagation()}>
-                <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
-                  <FileText size={24} />
+              <div className="flex flex-col w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center gap-3 relative z-10 mb-2">
+                  <div className="p-2 bg-emerald-100 text-emerald-600 rounded-lg">
+                    <FileText size={24} />
+                  </div>
+                  <div className="text-left flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{selectedFile.name}</p>
+                    <p className="text-xs text-emerald-600">
+                      {content === 'Uploading...' ? `Uploading: ${uploadProgress}%` : 'Link Generated!'}
+                    </p>
+                  </div>
+                  <button onClick={resetFile} className="p-1 hover:bg-gray-200 rounded-full ml-2">
+                    <X size={16} />
+                  </button>
                 </div>
-                <div className="text-left">
-                  <p className="text-sm font-medium text-gray-900 truncate max-w-[200px]">{selectedFile.name}</p>
-                  <p className="text-xs text-emerald-600">Link Generated!</p>
-                </div>
-                <button onClick={resetFile} className="p-1 hover:bg-gray-200 rounded-full ml-2">
-                  <X size={16} />
-                </button>
+
+                {content === 'Uploading...' && (
+                  <div className="w-full bg-gray-200 rounded-full h-2.5 dark:bg-gray-700">
+                    <div className="bg-emerald-600 h-2.5 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }}></div>
+                  </div>
+                )}
               </div>
             ) : (
               <>

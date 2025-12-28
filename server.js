@@ -250,6 +250,9 @@ app.get(/(.*)/, (req, res) => {
 });
 
 const PORT = process.env.PORT || 10000;
-app.listen(PORT, '0.0.0.0', () => {
+const server = app.listen(PORT, '0.0.0.0', () => {
     console.log('Server listening on port', PORT);
 });
+
+// Set timeout to 20 minutes (1200000 ms) to allow for large file uploads
+server.timeout = 1200000;
